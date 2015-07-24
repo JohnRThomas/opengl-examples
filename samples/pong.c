@@ -6,7 +6,6 @@
 #include <time.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
-#include <pthread.h>
 #ifdef __APPLE__
 #include <GLUT/glut.h>
 #else
@@ -69,7 +68,6 @@ GLuint texIdEarth;
 GLuint texIdClouds;
 GLuint texIdStars;
 float ticks = 200.0f;
-float cloudTicks = 200.0f;
 float planet[3] = {0.0f,0.0f,0.0f};
 float screen_width = 0.0f, screen_height = 0.0f;
 GLUquadricObj *earth = NULL;
@@ -127,11 +125,51 @@ void bounceBall()
 	float frustum[6];
 	projmat_get_frustum(frustum, -1, -1);
 	
+	//Grab the tracking data from VRPN
+	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
+	paddleA.xpos = vrpnPos[0];
+
+	vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
+	paddleB.xpos = vrpnPos[0];
+	
+	//Start the ball moving
+	if(!startedFlag)
+	{
+		if(time(NULL)-startTime < 5)
+		{
+			ball.xdir = 0;
+			ball.ydir = 0;
+			ball.color[0] = ball.fastColor[0];
+			ball.color[1] = ball.fastColor[1];
+			ball.color[2] = ball.fastColor[2];
+		}
+		else
+		{
+			srand48(startTime);
+			startedFlag = true;
+			ball.ydir = 1;
+			if(drand48() < .5)
+				ball.ydir = -1;
+
+			ball.color[0] = ball.fastColor[0];
+			ball.color[1] = ball.fastColor[1];
+			ball.color[2] = ball.fastColor[2];
+		}
+	}
+	
+	ball.xpos += ball.xdir * ball.speed;
+	ball.ypos += ball.ydir * ball.speed;
+	ball.color[0] = ball.color[0] - .005;
+	ball.color[1] = ball.color[1] - .005;
+	ball.color[2] = ball.color[2] - .005;
+	if(ball.color[0] < ball.baseColor[0]) ball.color[0] = ball.baseColor[0];
+	if(ball.color[1] < ball.baseColor[1]) ball.color[1] = ball.baseColor[1];
+	if(ball.color[2] < ball.baseColor[2]) ball.color[2] = ball.baseColor[2];
+	
 	if(ball.speed < ball.minSpeed)
     {
 	    ball.speed = ball.minSpeed;
     }
-
 
 	bool isBounce = false;
 	if(ball.xpos+ball.radius > frustum[1]) // right wall
@@ -288,43 +326,7 @@ void display()
 	/* If we are using DGR, send or receive data to keep multiple
 	 * processes/computers synchronized. */
 	dgr_update();
-	
-	/* If DGR is enabled, only do this in the master*/
-	if(dgr_is_enabled() == 0 || dgr_is_master())
-	{
-		//Grab the tracking data from VRPN
-		vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
-		paddleA.xpos = vrpnPos[0];
-
-		vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
-		paddleB.xpos = vrpnPos[0];
 		
-		//Start the ball moving
-		if(!startedFlag)
-		{
-			if(time(NULL)-startTime < 5)
-			{
-				ball.xdir = 0;
-				ball.ydir = 0;
-								ball.color[0] = ball.fastColor[0];
-				ball.color[1] = ball.fastColor[1];
-				ball.color[2] = ball.fastColor[2];
-			}
-			else
-			{
-				srand48(startTime);
-				startedFlag = true;
-				ball.ydir = 1;
-				if(drand48() < .5)
-					ball.ydir = -1;
-
-				ball.color[0] = ball.fastColor[0];
-				ball.color[1] = ball.fastColor[1];
-				ball.color[2] = ball.fastColor[2];
-			}
-		}
-	}
-	
 	/* Syncronize the DGR objects */
 	dgr_setget("paddleA", &paddleA, sizeof(Paddle));
 	dgr_setget("paddleB", &paddleB, sizeof(Paddle));
@@ -405,13 +407,10 @@ void display()
 	glTranslatef(planet[0], planet[1], depth-3.0);
 	glRotatef(25.0f, 0.0f, 0.0f, 1.0f);
 	glRotatef(-90, 1.0f, 0.0f, 0.0f);
-	glRotatef(cloudTicks, 1.0f, 0.0f, 1.0f);
-	cloudTicks += .005;
-	if(cloudTicks > 360.0f)cloudTicks = 0.0f;
+	glRotatef(ticks, 1.0f, 0.0f, 1.0f);
 	gluSphere(clouds, planet[2]*1.66f, 200, 200);
 	glPopMatrix();
 	
-    
     // Reset somethings for the rest of the scene
 	glDisable(GL_TEXTURE_2D);
 	glDisable(GL_BLEND);
@@ -450,26 +449,16 @@ void display()
 	glTranslatef(ball.xpos, ball.ypos, depth+4.0f);
 	glutSolidSphere(ball.radius, 100, 100);
 	glPopMatrix();
-
-		
+	
 	/* If DGR is enabled, only do this in the master*/
 	if(dgr_is_enabled() == 0 || dgr_is_master())
 	{
-		ball.xpos += ball.xdir * ball.speed;
-		ball.ypos += ball.ydir * ball.speed;
-		ball.color[0] = ball.color[0] - .005;
-		ball.color[1] = ball.color[1] - .005;
-		ball.color[2] = ball.color[2] - .005;
-		if(ball.color[0] < ball.baseColor[0]) ball.color[0] = ball.baseColor[0];
-		if(ball.color[1] < ball.baseColor[1]) ball.color[1] = ball.baseColor[1];
-		if(ball.color[2] < ball.baseColor[2]) ball.color[2] = ball.baseColor[2];
 		bounceBall();	
 	}
 	
 	glFlush();
 	glutSwapBuffers();
 	glutPostRedisplay(); // call display() repeatedly
-
 }
 
 int main( int argc, char* argv[] )
@@ -538,12 +527,11 @@ int main( int argc, char* argv[] )
 	gluQuadricDrawStyle(clouds, GLU_FILL);
 	gluQuadricTexture(clouds, GL_TRUE);
 	gluQuadricNormals(clouds, GLU_SMOOTH);
-	
-	printf("%d\n",kuhl_can_read_file(EARTH));
-	
+		
 	kuhl_read_texture_file(EARTH, &texIdEarth);
 	kuhl_read_texture_file(CLOUDS, &texIdClouds);
 	kuhl_read_texture_file(STARS, &texIdStars);
 
 	glutMainLoop();
+	
 }
