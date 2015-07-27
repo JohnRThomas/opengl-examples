@@ -62,7 +62,7 @@ typedef struct
 	float xpos, ypos;
 } Ball;
 
-Ball ball = {.02, 0, 4, .013, .013, {0,0,0}, {150/255.0,150/255.0,150/255.0}, {50/255.0, 210/255.0, 50/255.0}, 0, 1, 0, 0}; //Create a ball that turns green when it speeds up.
+Ball ball = {.02, 0, 4, .013, .013, {0,0,0}, {255/255.0, 0/255.0, 0/255.0}, {0/255.0, 255/255.0, 0/255.0}, 0, 1, 0, 0}; //Create a ball that turns green when it speeds up.
 
 GLuint texIdEarth;
 GLuint texIdClouds;
@@ -109,11 +109,17 @@ void keyboard(unsigned char key, int x, int y)
 			break;
 		case 'a':
 			paddleA.xpos -= .01;
-			paddleB.xpos += .01;
 			clampPaddles();
 			break;
 		case 'd':
 			paddleA.xpos += .01;
+			clampPaddles();
+			break;
+		case 'l':
+			paddleB.xpos += .01;
+			clampPaddles();
+			break;
+		case 'j':
 			paddleB.xpos -= .01;
 			clampPaddles();
 			break;
@@ -139,9 +145,9 @@ void bounceBall()
 		{
 			ball.xdir = 0;
 			ball.ydir = 0;
-			ball.color[0] = ball.fastColor[0];
-			ball.color[1] = ball.fastColor[1];
-			ball.color[2] = ball.fastColor[2];
+			ball.color[0] = ball.baseColor[0];
+			ball.color[1] = ball.baseColor[1];
+			ball.color[2] = ball.baseColor[2];
 		}
 		else
 		{
@@ -151,20 +157,14 @@ void bounceBall()
 			if(drand48() < .5)
 				ball.ydir = -1;
 
-			ball.color[0] = ball.fastColor[0];
-			ball.color[1] = ball.fastColor[1];
-			ball.color[2] = ball.fastColor[2];
+			ball.color[0] = ball.baseColor[0];
+			ball.color[1] = ball.baseColor[1];
+			ball.color[2] = ball.baseColor[2];
 		}
 	}
 	
 	ball.xpos += ball.xdir * ball.speed;
 	ball.ypos += ball.ydir * ball.speed;
-	ball.color[0] = ball.color[0] - .005;
-	ball.color[1] = ball.color[1] - .005;
-	ball.color[2] = ball.color[2] - .005;
-	if(ball.color[0] < ball.baseColor[0]) ball.color[0] = ball.baseColor[0];
-	if(ball.color[1] < ball.baseColor[1]) ball.color[1] = ball.baseColor[1];
-	if(ball.color[2] < ball.baseColor[2]) ball.color[2] = ball.baseColor[2];
 	
 	if(ball.speed < ball.minSpeed)
     {
@@ -172,12 +172,25 @@ void bounceBall()
     }
 
 	bool isBounce = false;
+	
+	//Handle the sides of the play area
+	if(ball.xpos-ball.radius < frustum[0]) // left wall
+	{
+		ball.xpos = frustum[0]+ball.radius;
+		ball.xdir = -ball.xdir;
+		isBounce = true;
+	}
+
+	
 	if(ball.xpos+ball.radius > frustum[1]) // right wall
 	{
 		ball.xpos = frustum[1]-ball.radius;
 		ball.xdir = -ball.xdir;
 		isBounce = true;
 	}
+	
+	
+	// Handle the Top and the bottom of the play area
 	if(ball.ypos > frustum[3]) // top wall
 	{
 #if 0
@@ -206,12 +219,6 @@ void bounceBall()
 			
 		}
 	}
-	if(ball.xpos-ball.radius < frustum[0]) // left wall
-	{
-		ball.xpos = frustum[0]+ball.radius;
-		ball.xdir = -ball.xdir;
-		isBounce = true;
-	}
 
 	if(ball.ypos < frustum[2]) // bottom wall
 	{
@@ -239,7 +246,6 @@ void bounceBall()
 			hasAlreadyMissed = false;
 		}
 	}
-
 	
 	if(!hasAlreadyMissed)
 	{
@@ -290,7 +296,14 @@ void bounceBall()
 		ball.color[1] = ball.fastColor[1];
 		ball.color[2] = ball.fastColor[2];
 	}
-
+	else // If a speedup didn't happen, make the ball more green
+	{
+		float step = (float)ball.bounceCount / ((float)ball.speedUp-1);
+		ball.color[0] = ball.baseColor[0] + ((ball.fastColor[0] - ball.baseColor[0]) * step);
+		ball.color[1] = ball.baseColor[1] + ((ball.fastColor[1] - ball.baseColor[1]) * step);
+		ball.color[2] = ball.baseColor[2] + ((ball.fastColor[2] - ball.baseColor[2]) * step);
+	}
+	
 	// add noise to bounces so they don't bounce perfectly.
 	if(isBounce)
 	{
@@ -373,6 +386,7 @@ void display()
  	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	
+	// Draw the background quad with the scrolling star texture
 	float tickmod = ticks / 200.0f;
 	glBegin(GL_QUADS);
 	glTexCoord2f(tickmod+1.0f, -tickmod);
@@ -469,6 +483,7 @@ int main( int argc, char* argv[] )
 	glutInit(&argc, argv); //initialize the toolkit
 	glEnable(GL_POINT_SMOOTH);
 	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
+	
 	/* Ask GLUT to for a double buffered, full color window that includes a depth buffer */
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);  //set display mode
 	glutInitWindowSize(768, 512); //set window size
