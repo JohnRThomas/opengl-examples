@@ -62,6 +62,7 @@ typedef struct
 	float xpos, ypos;
 } Ball;
 
+
 Ball ball = {.02, 0, 4, .013, .013, {0,0,0}, {255/255.0, 0/255.0, 0/255.0}, {0/255.0, 255/255.0, 0/255.0}, 0, 1, 0, 0}; //Create a ball that turns green when it speeds up.
 
 GLuint texIdEarth;
@@ -70,6 +71,7 @@ GLuint texIdStars;
 float ticks = 200.0f;
 float planet[3] = {0.0f,0.0f,0.0f};
 float screen_width = 0.0f, screen_height = 0.0f;
+
 GLUquadricObj *earth = NULL;
 GLUquadricObj *clouds = NULL;
 
@@ -132,11 +134,11 @@ void bounceBall()
 	projmat_get_frustum(frustum, -1, -1);
 	
 	//Grab the tracking data from VRPN
-	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
+	/*vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
 	paddleA.xpos = vrpnPos[0];
 
 	vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
-	paddleB.xpos = vrpnPos[0];
+	paddleB.xpos = vrpnPos[0];*/
 	
 	//Start the ball moving
 	if(!startedFlag)
@@ -345,7 +347,7 @@ void display()
 	dgr_setget("paddleB", &paddleB, sizeof(Paddle));
 	dgr_setget("ball", &ball, sizeof(Ball));
 	dgr_setget("planet", planet, sizeof(float)*3);
-	
+
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
 	glEnable(GL_COLOR_MATERIAL);
@@ -377,6 +379,7 @@ void display()
 	GLfloat position[] = { 1.0f, -1.0f, depth+5.5f, 1.0f };
 	glLightfv(GL_LIGHT0, GL_POSITION, position);
 	
+
 	// Draw the background stars
 	float masterfrust[6];
 	projmat_get_master_frustum(masterfrust);
@@ -396,6 +399,7 @@ void display()
 	glTexCoord2f(tickmod, 1.0f-tickmod);
 	glVertex3f(masterfrust[0], masterfrust[2], depth-3.0);
 	glTexCoord2f(tickmod+1.0f, 1.0f-tickmod);
+
 	glVertex3f(masterfrust[1], masterfrust[2], depth-3.0);
 	glEnd();
 	
@@ -467,6 +471,7 @@ void display()
 	/* If DGR is enabled, only do this in the master*/
 	if(dgr_is_enabled() == 0 || dgr_is_master())
 	{
+
 		bounceBall();	
 	}
 	
@@ -546,6 +551,7 @@ int main( int argc, char* argv[] )
 	kuhl_read_texture_file(EARTH, &texIdEarth);
 	kuhl_read_texture_file(CLOUDS, &texIdClouds);
 	kuhl_read_texture_file(STARS, &texIdStars);
+
 
 	glutMainLoop();
 	
