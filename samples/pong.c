@@ -442,7 +442,7 @@ void display()
 	glRotatef(25.0f, 0.0f, 0.0f, 1.0f);
 	glRotatef(-90, 1.0f, 0.0f, 0.0f);
 	glRotatef(ticks, 1.0f, 0.0f, 1.0f);
-	gluSphere(clouds, planet[2]*1.66f, 200, 200);
+	gluSphere(clouds, planet[2]*1.652f, 200, 200);
 	glPopMatrix();
 	
     // Reset somethings for the rest of the scene
