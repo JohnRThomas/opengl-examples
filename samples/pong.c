@@ -147,8 +147,18 @@ void game()
 	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
 	paddleA.xpos = vrpnPos[0];
 
+	if(vrpnPos[1] <= .5)
+	{
+		paddleA.ready = true;
+	}
+
 	vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
 	paddleB.xpos = vrpnPos[0];
+	
+	if(vrpnPos[1] <= .5)
+	{
+		paddleB.ready = true;
+	}
 	
 	//Preform the action based on the game state
 	switch(gameState)
