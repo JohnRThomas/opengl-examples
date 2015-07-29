@@ -29,10 +29,17 @@
 #define GS_PLAYING 2
 #define GS_SCORED 3
 
-// Make a new client
-//Client MyClient;
-//std::string HostName = "141.219.28.17:801";
-//std::string HostName = "localhost:801";
+// These images are available to MTU students on the Linux file system
+// on most machines. These files are not included in the git
+// repository.
+#define STARS "pong/stars.png"
+#define EARTH "pong/earth.png"
+#define CLOUDS "pong/clouds.png"
+
+#define GS_WAITING 0
+#define GS_READY 1
+#define GS_PLAYING 2
+#define GS_SCORED 3
 
 typedef struct
 {
@@ -146,6 +153,7 @@ void game()
 	//Grab the tracking data from VRPN
 	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
 	paddleA.xpos = vrpnPos[0];
+
 
 	if(vrpnPos[1] <= .5)
 	{
@@ -284,7 +292,7 @@ void game()
 				ball.color[1] = ball.baseColor[1] + ((ball.fastColor[1] - ball.baseColor[1]) * step);
 				ball.color[2] = ball.baseColor[2] + ((ball.fastColor[2] - ball.baseColor[2]) * step);
 			}
-	
+
 			// add noise to bounces so they don't bounce perfectly.
 			if(isBounce)
 			{
