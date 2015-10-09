@@ -26,14 +26,6 @@
 // Names of the tracked objects which will form the paddles.
 #define TRACKED_OBJ_A "HandL"
 #define TRACKED_OBJ_B "HandR"
-#define STARS "../images/stars.png"
-#define EARTH "../images/earth.png"
-#define CLOUDS "../images/clouds.png"
-
-#define GS_WAITING 0
-#define GS_READY 1
-#define GS_PLAYING 2
-#define GS_SCORED 3
 
 // These images are available to MTU students on the Linux file system
 // on most machines. These files are not included in the git
