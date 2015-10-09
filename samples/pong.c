@@ -156,28 +156,9 @@ void game()
 {
 	float frustum[6];
 	projmat_get_frustum(frustum, -1, -1);
-<<<<<<< HEAD
-	
-	//Grab the tracking data from VRPN
-	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
-	paddleA.xpos = vrpnPos[0];
-
-=======
->>>>>>> upstream/master
 
 	if(USE_VRPN)
 	{
-<<<<<<< HEAD
-		paddleA.ready = true;
-	}
-
-	vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
-	paddleB.xpos = vrpnPos[0];
-	
-	if(vrpnPos[1] <= .5)
-	{
-		paddleB.ready = true;
-=======
 		vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
 		paddleA.xpos = vrpnPos[0];
 		if(vrpnPos[1] <= .5)
@@ -187,7 +168,7 @@ void game()
 		paddleB.xpos = vrpnPos[0];
 		if(vrpnPos[1] <= .5)
 			paddleB.ready = true;
->>>>>>> upstream/master
+
 	}
 	
 	//Preform the action based on the game state
