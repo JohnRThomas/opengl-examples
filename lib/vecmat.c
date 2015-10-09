@@ -1,5 +1,16 @@
+/* Copyright (c) 2014 Scott Kuhl. All rights reserved.
+ * License: This code is licensed under a 3-clause BSD license. See
+ * the file named "LICENSE" for a full copy of the license.
+ */
+
+/** @file
+ * @author Scott Kuhl
+ */
+
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <math.h>
 #include <string.h>
 #include "vecmat.h"
@@ -139,6 +150,12 @@ extern inline void vec3d_sub_new(double result[3], const double a[3], const doub
 extern inline void vec4f_sub_new(float  result[4], const float  a[4], const float  b[4]);
 extern inline void vec4d_sub_new(double result[4], const double a[4], const double b[4]);
 
+/* Print a vector to a string */
+static inline void vecNf_print_to_string(char *dest, const int destSize,
+                                         const float v[ ], const int n);
+static inline void vecNd_print_to_string(char *dest, const int destSize,
+                                         const double v[ ], const int n);
+
 /* Print the vector to standard out. */
 extern inline void vecNf_print(const float  v[ ], const int n);
 extern inline void vecNd_print(const double v[ ], const int n);
@@ -191,8 +208,6 @@ extern inline void mat3f_setRow(float  matrix[ 9], const float  m[3], const int 
 extern inline void mat3d_setRow(double matrix[ 9], const double m[3], const int row);
 extern inline void mat4f_setRow(float  matrix[16], const float  m[4], const int row);
 extern inline void mat4d_setRow(double matrix[16], const double m[4], const int row);
-
-
 
 
 /* Copy a matrix */
@@ -281,6 +296,110 @@ extern inline void mat4d_from_mat3d(double dest[16], const double src[ 9]);
 extern inline void mat3f_from_mat4f(float  dest[ 9], const float  src[16]);
 extern inline void mat3d_from_mat4d(double dest[ 9], const double src[16]);
 
+
+/** Multiply an arbitrary list of matrices together. The last matrix must be NULL.
+
+    @param out The product of all of the other matrices.
+    @param in One or more matrices to be multiplied together.
+ */
+void mat4f_mult_mat4f_many(float out[16], const float *in, ...)
+{
+	/* Initialize argList. */
+	va_list argList;
+	va_start(argList, in);
+
+	/* Handle first matrix */
+	mat4f_copy(out, in);
+
+	/* Multiply all of the other matrices with the existing one until
+	 * we reach NULL. */
+	float *this = va_arg(argList, float*);
+	while(this != NULL)
+	{
+		mat4f_mult_mat4f_new(out, out, this);
+		this = va_arg(argList,float*);
+	}
+	va_end(argList);
+}
+
+/** Multiply an arbitrary list of matrices together. The last matrix must be NULL.
+
+    @param out The product of all of the other matrices.
+    @param in One or more matrices to be multiplied together.
+ */
+void mat4d_mult_mat4d_many(double out[16], const double *in, ...)
+{
+	/* Initialize argList. */
+	va_list argList;
+	va_start(argList, in);
+
+	/* Handle first matrix */
+	mat4d_copy(out, in);
+
+	/* Multiply all of the other matrices with the existing one until
+	 * we reach NULL. */
+	double *this = va_arg(argList, double*);
+	while(this != NULL)
+	{
+		mat4d_mult_mat4d_new(out, out, this);
+		this = va_arg(argList,double*);
+	}
+	va_end(argList);
+}
+
+/** Multiply an arbitrary list of matrices together. The last matrix must be NULL.
+
+    @param out The product of all of the other matrices.
+    @param in One or more matrices to be multiplied together.
+ */
+void mat3f_mult_mat3f_many(float out[9], const float *in, ...)
+{
+	/* Initialize argList. */
+	va_list argList;
+	va_start(argList, in);
+
+	/* Handle first matrix */
+	mat3f_copy(out, in);
+
+	/* Multiply all of the other matrices with the existing one until
+	 * we reach NULL. */
+	float *this = va_arg(argList, float*);
+	while(this != NULL)
+	{
+		mat3f_mult_mat3f_new(out, out, this);
+		this = va_arg(argList,float*);
+	}
+	va_end(argList);
+}
+
+/** Multiply an arbitrary list of matrices together. The last matrix must be NULL.
+
+    @param out The product of all of the other matrices.
+    @param in One or more matrices to be multiplied together.
+ */
+void mat3d_mult_mat3d_many(double out[9], const double *in, ...)
+{
+	/* Initialize argList. */
+	va_list argList;
+	va_start(argList, in);
+
+	/* Handle first matrix */
+	mat3d_copy(out, in);
+
+	/* Multiply all of the other matrices with the existing one until
+	 * we reach NULL. */
+	double *this = va_arg(argList, double*);
+	while(this != NULL)
+	{
+		mat3d_mult_mat3d_new(out, out, this);
+		this = va_arg(argList,double*);
+	}
+	va_end(argList);
+}
+
+
+
+
 /** Inverts a 4x4 float matrix.
  *
  * This works regardless of if we are treating the data as row major
@@ -312,8 +431,10 @@ int mat4f_invert_new(float out[16], const float m[16])
 	det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
 	if (det == 0)
 	{
-		printf("%s: Failed to invert the following matrix:\n", __func__);
-		mat4f_print(m);
+		msg(ERROR, "Failed to invert the following matrix\n");
+		char str[256];
+		matNf_print_to_string(str, 256, m, 4);
+		msg(ERROR, "%s", str);
 		return 0;
 	}
 
@@ -356,8 +477,10 @@ int mat4d_invert_new(double out[16], const double m[16])
 	det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
 	if (det == 0)
 	{
-		printf("%s: Failed to invert the following matrix:\n", __func__);
-		mat4d_print(m);
+		msg(ERROR, "Failed to invert the following matrix\n");
+		char str[256];
+		matNd_print_to_string(str, 256, m, 4);
+		msg(ERROR, "%s", str);
 		return 0;
 	}
 
@@ -380,7 +503,7 @@ int mat4d_invert_new(double out[16], const double m[16])
  */
 int mat3f_invert_new(float out[9], const float m[9])
 {
-	float inv[9];
+	float inv[9], det;
 	inv[0] = m[4] * m[8] - m[5] * m[7];
 	inv[3] = m[6] * m[5] - m[3] * m[8];
 	inv[6] = m[3] * m[7] - m[6] * m[4];
@@ -390,13 +513,13 @@ int mat3f_invert_new(float out[9], const float m[9])
 	inv[2] = m[1] * m[5] - m[2] * m[4];
 	inv[5] = m[2] * m[3] - m[0] * m[5];
 	inv[8] = m[0] * m[4] - m[1] * m[3];
-	float det = m[0] * (m[4] * m[8] - m[5] * m[7]) -
-	            m[3] * (m[1] * m[8] - m[7] * m[2]) +
-	            m[6] * (m[1] * m[5] - m[4] * m[2]);
+	det = m[0]*inv[0] + m[3]*inv[1] + m[6]*inv[2];
 	if (det == 0)
 	{
-		printf("%s: Failed to invert the following matrix:\n", __func__);
-		mat3f_print(m);
+		msg(ERROR, "Failed to invert the following matrix\n");
+		char str[256];
+		matNf_print_to_string(str, 256, m, 3);
+		msg(ERROR, "%s", str);
 		return 0;
 	}
 
@@ -419,7 +542,7 @@ int mat3f_invert_new(float out[9], const float m[9])
  */
 int mat3d_invert_new(double out[9], const double m[9])
 {
-	float inv[9];
+	double inv[9], det;
 	inv[0] = m[4] * m[8] - m[5] * m[7];
 	inv[3] = m[6] * m[5] - m[3] * m[8];
 	inv[6] = m[3] * m[7] - m[6] * m[4];
@@ -429,13 +552,13 @@ int mat3d_invert_new(double out[9], const double m[9])
 	inv[2] = m[1] * m[5] - m[2] * m[4];
 	inv[5] = m[2] * m[3] - m[0] * m[5];
 	inv[8] = m[0] * m[4] - m[1] * m[3];
-	float det = m[0] * (m[4] * m[8] - m[5] * m[7]) -
-	            m[3] * (m[1] * m[8] - m[7] * m[2]) +
-	            m[6] * (m[1] * m[5] - m[4] * m[2]);
+	det = m[0]*inv[0] + m[3]*inv[1] + m[6]*inv[2];
 	if (det == 0)
 	{
-		printf("%s: Failed to invert the following matrix:\n", __func__);
-		mat3d_print(m);
+		msg(ERROR, "Failed to invert the following matrix\n");
+		char str[256];
+		matNd_print_to_string(str, 256, m, 3);
+		msg(ERROR, "%s", str);
 		return 0;
 	}
 
@@ -524,7 +647,7 @@ void mat3f_rotateEuler_new(float result[9], float a1_degrees, float a2_degrees, 
 		else if(order[i] == 'Z' || order[i] == '3')
 			mat3f_rotateAxis_new(rot, angles[i], 0, 0, 1);
 		else
-			printf("%s: Unknown axis: %c\n", __func__, order[i]);
+			msg(ERROR, "Unknown axis: %c\n", order[i]);
 		mat3f_mult_mat3f_new(result, rot, result);
 	}
 }
@@ -549,7 +672,7 @@ void mat3d_rotateEuler_new(double result[9], double a1_degrees, double a2_degree
 		else if(order[i] == 'Z' || order[i] == '3')
 			mat3d_rotateAxis_new(rot, 0, 0, 1, angles[i]);
 		else
-			printf("%s: Unknown axis: %c\n", __func__, order[i]);
+			msg(ERROR, "Unknown axis: %c\n", order[i]);
 		mat3d_mult_mat3d_new(result, rot, result);
 	}
 }
@@ -629,7 +752,7 @@ void eulerf_from_mat3f(float angles[3], const float m[9], const char order[3])
 		else if(order[i] == 'Z' || order[i] == '3')
 			index[i] = 2;
 		else
-			printf("%s: Unknown axis: %c\n", __func__, order[i]);
+			msg(ERROR, "Unknown axis: %c\n", order[i]);
 	}
 
     // Check if the first and last rotations are around the same axis.
@@ -732,7 +855,7 @@ void eulerd_from_mat3d(double angles[3], const double m[9], const char order[3])
 		else if(order[i] == 'Z' || order[i] == '3')
 			index[i] = 2;
 		else
-			printf("%s: Unknown axis: %c\n", __func__, order[i]);
+			msg(ERROR, "Unknown axis: %c\n", order[i]);
 	}
 
     // Check if the first and last rotations are around the same axis.
@@ -863,7 +986,7 @@ void mat3f_rotateAxisVec_new(float result[9], float degrees, const float axis[3]
 	float length = vec3f_norm(axis);
 	if(length < .00001)
 	{
-		printf("%s: Vector to rotate around was 0!", __func__);
+		msg(ERROR, "Vector to rotate around was 0!");
 		mat3f_identity(result);
 		return;
 	}
@@ -912,7 +1035,7 @@ void mat3d_rotateAxisVec_new(double result[9], double degrees, const double axis
 	double length = vec3d_norm(axis);
 	if(length < .00001)
 	{
-		printf("%s: Vector to rotate around was 0!", __func__);
+		msg(ERROR, "Vector to rotate around was 0!");
 		mat3d_identity(result);
 		return;
 	}
@@ -1524,7 +1647,7 @@ void mat4f_frustum_new(float result[16], float left, float right, float bottom, 
 	mat4f_identity(result);
 	if(left == right || bottom == top || near == far || near == 0)
 	{
-		fprintf(stderr, "%s: Invalid view frustum matrix.\n", __func__);
+		msg(ERROR, "Invalid view frustum matrix.\n");
 		return;
 	}
 	result[0]  =  2.0f * near / (right - left);
@@ -1559,7 +1682,7 @@ void mat4d_frustum_new(double result[16], double left, double right, double bott
 	mat4d_identity(result);
 	if(left == right || bottom == top || near == far || near == 0)
 	{
-		fprintf(stderr, "%s: Invalid view frustum matrix.\n", __func__);
+		msg(ERROR, "Invalid view frustum matrix.\n");
 		return;
 	}
 	result[0]  =  2.0f * near / (right - left);
@@ -1592,7 +1715,7 @@ void mat4f_ortho_new(float result[16], float left, float right, float bottom, fl
 	mat4f_identity(result);
 	if(left == right || bottom == top || near == far)
 	{
-		fprintf(stderr, "%s: Invalid orthographic projection matrix.\n", __func__);
+		msg(ERROR, "Invalid orthographic projection matrix.\n");
 		return;
 	}
 	result[0]  =  2 / (right-left);
@@ -1623,7 +1746,7 @@ void mat4d_ortho_new(double result[16], double left, double right, double bottom
 	mat4d_identity(result);
 	if(left == right || bottom == top || near == far)
 	{
-		fprintf(stderr, "%s: Invalid orthographic projection matrix.\n", __func__);
+		msg(ERROR, "Invalid orthographic projection matrix.\n");
 		return;
 	}
 	result[0]  =  2 / (right-left);
@@ -1652,7 +1775,7 @@ void mat4f_perspective_new(float result[16], float  fovy, float  aspect, float  
 	far = fabsf(far);
 	if(near == 0)
 	{
-		fprintf(stderr, "%s: Invalid perspective projection matrix.\n", __func__);
+		msg(ERROR, "Invalid perspective projection matrix.\n");
 		return;
 	}
 	float fovyRad = fovy * M_PI/180.0f;
@@ -1678,7 +1801,7 @@ void mat4d_perspective_new(double result[16], double fovy, double aspect, double
 	far = fabs(far);
 	if(near == 0)
 	{
-		fprintf(stderr, "%s: Invalid perspective projection matrix.\n", __func__);
+		msg(ERROR, "Invalid perspective projection matrix.\n");
 		mat4d_identity(result);
 		return;
 	}
@@ -1795,6 +1918,73 @@ void mat4d_lookat_new(double result[16], double eyeX, double eyeY, double eyeZ, 
 	vec3d_set(up,         upX,     upY,     upZ);
 	mat4d_lookatVec_new(result, eye, center, up);
 }
+
+/** Construct a camera position, look point, and a up vector given a
+    view matrix.
+
+    This function is the opposite of mat4f_lookat().
+
+    @param eye The resulting camera position.
+    @param center A point that the camera is pointed at. This value may differ from the one originally used to create the view matrix. However, it should form the same look vector.
+    @param up An up vector for the camera. This value may differ from the one originally used to create the matrix. However, it should be orthogonal to the look vector.
+    @param viewmat A view matrix construct the eye point, center point, and up vector from.
+ */
+void mat4f_viewmat_to_lookatVec(const float viewmat[16], float eye[3], float center[3], float up[3])
+{
+	/* Create a 4x4 which only contains the rotation part of the 3x3 view matrix */
+	float rotation3[9], rotation4[16];
+	mat3f_from_mat4f(rotation3, viewmat);
+	mat4f_from_mat3f(rotation4, rotation3);
+
+	/* recover the translation only part */
+	mat4f_invert(rotation4);
+	float transOnly[16];
+	mat4f_mult_mat4f_new(transOnly, rotation4, viewmat);
+
+	/* Recover camera position */
+	float transVec[4];
+	mat4f_getColumn(transVec, transOnly, 3); // last column
+	vec3f_scalarMult_new(eye, transVec, -1); // invert
+
+	/* Recover up vector */
+	float upVec[4];
+	mat4f_getRow(upVec, viewmat, 1); // 2nd row
+	vec3f_copy(up, upVec);
+
+	/* make up a lookat point consistent with the look vector */
+	float lookVec[4];
+	mat4f_getRow(lookVec, viewmat, 2); // 3rd row
+	vec3f_sub_new(center, eye, lookVec);
+}
+
+void mat4d_viewmat_to_lookatVec(const double viewmat[16], double eye[3], double center[3], double up[3])
+{
+	/* Create a 4x4 which only contains the rotation part of the 3x3 view matrix */
+	double rotation3[9], rotation4[16];
+	mat3d_from_mat4d(rotation3, viewmat);
+	mat4d_from_mat3d(rotation4, rotation3);
+
+	/* recover the translation only part */
+	mat4d_invert(rotation4);
+	double transOnly[16];
+	mat4d_mult_mat4d_new(transOnly, rotation4, viewmat);
+
+	/* Recover camera position */
+	double transVec[4];
+	mat4d_getColumn(transVec, transOnly, 3); // last column
+	vec3d_scalarMult_new(eye, transVec, -1); // invert
+
+	/* Recover up vector */
+	double upVec[4];
+	mat4d_getRow(upVec, viewmat, 1); // 2nd row
+	vec3d_copy(up, upVec);
+
+	/* make up a lookat point consistent with the look vector */
+	double lookVec[4];
+	mat4d_getRow(lookVec, viewmat, 2); // 3rd row
+	vec3d_sub_new(center, eye, lookVec);
+}
+
 
 
 /** Pushes a copy of a matrix currently on top of the stack onto the

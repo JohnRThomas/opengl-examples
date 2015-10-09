@@ -12,10 +12,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <GL/glew.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
+#ifdef FREEGLUT
 #include <GL/freeglut.h>
+#else
+#include <GLUT/glut.h>
 #endif
 
 #include "kuhl-util.h"
@@ -158,16 +158,17 @@ void init_geometryTriangle(kuhl_geometry *geom, GLuint prog)
 	kuhl_geometry_attrib(geom, texcoordData, 2, "in_TexCoord", KG_WARN);
 
 
-/* The data that we want to draw */
+	/* The data that we want to draw */
 	GLfloat vertexData[] = {0, 0, 0,
 	                        1, 0, 0,
 	                        1, 1, 0};
 	kuhl_geometry_attrib(geom, vertexData, 3, "in_Position", KG_WARN);
 
 
-	/* Load the texture. It will be bound to texName */
+	/* Load the texture. It will be bound to texId */	
 	GLuint texId = 0;
 	kuhl_read_texture_file("../images/rainbow.png", &texId);
+	/* Tell this piece of geometry to use the texture we just loaded. */
 	kuhl_geometry_texture(geom, texId, "tex", KG_WARN);
 
 	kuhl_errorcheck();
@@ -180,12 +181,13 @@ int main(int argc, char** argv)
 	glutInitWindowSize(512, 512);
 	/* Ask GLUT to for a double buffered, full color window that
 	 * includes a depth buffer */
-#ifdef __APPLE__
-	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
-#else
+#ifdef FREEGLUT
+	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 	glutInitContextVersion(3,2);
 	glutInitContextProfile(GLUT_CORE_PROFILE);
+#else
+	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 #endif
 	glutCreateWindow(argv[0]); // set window title to executable name
 	glEnable(GL_MULTISAMPLE);

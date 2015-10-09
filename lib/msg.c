@@ -36,6 +36,11 @@
 static FILE *f = NULL;  /*< The file stream for our log file */
 static char *logfile = NULL;
 
+/** Writes a timestamp string to a pre-allocated char array.
+
+    @param buf A buffer of len bytes where the timestamp should be stored.
+    @param len The length of the buffer.
+*/
 static void msg_timestamp(char *buf, int len)
 {
 	struct timeval tv;
@@ -61,6 +66,12 @@ static void msg_timestamp(char *buf, int len)
 #endif
 }
 
+/** Given a message type, creates a string describing that message type.
+
+    @param type The message type.
+    @param buf A buffer to store a string which describes the message type.
+    @param len The length of the buffer.
+*/
 static void msg_type_string(msg_type type, char *buf, int len)
 {
 	switch(type)
@@ -115,8 +126,17 @@ static int msg_show_type(msg_type type)
 	}
 }
 
+/** Writes bytes to a file stream to enable colors, bold, etc for special messages.
+
+    @param type The message type.
+    
+    @param stream A stream that the bytes should be written to.
+ */
 static void msg_start_color(msg_type type, FILE *stream)
 {
+	/* Don't do anything if the stream is invalid or if the stream is
+	 * not associated with a tty (i.e., we only use colors if writing
+	 * to stdout or stderr, not when writing to a file. */
 	if(stream == NULL || isatty(fileno(stream)) == 0)
 		return;
 
@@ -158,6 +178,7 @@ static void msg_start_color(msg_type type, FILE *stream)
 
 }
 
+/** Writes bytes to a stream to reset the colors back to he default. */
 static void msg_end_color(msg_type type, FILE *stream)
 {
 	if(stream == NULL || isatty(fileno(stream)) == 0)
@@ -175,31 +196,46 @@ static void msg_end_color(msg_type type, FILE *stream)
  */
 static void msg_init(void)
 {
-	// Set to 1 to overwrite existing log file, 0 to append.
-	const int append = 0;
-	
-	logfile = strdup("log.txt");
-	const char* envvar_logfile = getenv("MSG_LOGFILE");
-	if(envvar_logfile != NULL && strlen(envvar_logfile) > 0)
-		logfile = strdup(envvar_logfile);
-	
+	/* If we have already successfully initialized the msg() system, f
+	 * (the file descriptor for the log file) will be initialized. */
 	if(f != NULL)
 		return;
 
+	// Set to 1 to overwrite existing log file, 0 to append.
+	const int append = 0;
+
+	// Check if log file name is specified in an environment variable
+	const char* envvar_logfile = getenv("MSG_LOGFILE");
+	if(envvar_logfile != NULL && strlen(envvar_logfile) > 0)
+		logfile = strdup(envvar_logfile);
+	else
+		logfile = strdup("log.txt"); // default log file name
+
+	f = fopen(logfile, append ? "a" : "w");
+	if(f == NULL)
+	{
+		fprintf(stderr, "Unable to %s to log file %s\n", append ? "append" : "write", logfile);
+		exit(EXIT_FAILURE);
+	}
+		
 	if(append)
 	{
-		f = fopen(logfile, "a");
+		// outputs of multiple runs.
 		fprintf(f, "============================================================\n");
 		fprintf(f, "=== Program started ========================================\n");
 		fprintf(f, "============================================================\n");
-		msg(INFO, "Messages are being appended to '%s'\n", logfile);
 	}
-	else
-		f = fopen(logfile, "w"); // overwrite
 
+	// Header for log file
 	fprintf(f, "[TYPE ]    seconds     filename:line message\n");
 	fprintf(f, "------------------------------------------\n");
-	msg(INFO, "Messages are being written to '%s'\n", logfile);
+
+	// Write message so user knows the log file is being created.
+	if(append)
+		msg(INFO, "Messages are being appended to '%s'\n", logfile);
+	else
+		msg(INFO, "Messages are being written to '%s'\n", logfile);
+
 }
 
 /** Writes a message to the log file.
@@ -259,8 +295,8 @@ void msg_details(msg_type type, const char *fileName, int lineNum, const char *f
 			snprintf(prepend, 1024, "(%s) ", logfile);
 		
 		msg_start_color(type, stream);
-		/* Print additional details to console for fatal errors */
-		if(type == FATAL)
+		/* Print additional details to console for significant errors */
+		if(type == FATAL || type == ERROR)
 		{
 			fprintf(stream, "%s %s%s\n", typestr, prepend, msgbuf);
 			fprintf(stream, "%s %sOccurred at %s:%d in the function %s()\n",

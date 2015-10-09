@@ -12,10 +12,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <GL/glew.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
+#ifdef FREEGLUT
 #include <GL/freeglut.h>
+#else
+#include <GLUT/glut.h>
 #endif
 
 #include "kuhl-util.h"
@@ -34,14 +34,18 @@ kuhl_geometry *modelgeom = NULL;
 kuhl_geometry *origingeom = NULL;
 float bbox[6];
 
-/** Set this variable to 1 to force this program to scale the entire
- * model and translate it so that we can see the entire model. This is
- * a useful setting to use when you are loading a new model that you
- * are unsure about the units and position of the model geometry. */
-#define FIT_TO_VIEW 0
-/** If FIT_TO_VIEW is set, this is the place to put the
+int fitToView=0;  // was --fit option used?
+
+/** The following variable toggles the display an "origin+axis" marker
+ * which draws a small box at the origin and draws lines of length 1
+ * on each axis. Depending on which matrices are applied to the
+ * marker, the marker will be in object, world, etc coordinates. */
+int showOrigin=0; // was --origin option used?
+
+
+/** If fitToView is set, this is the place to put the
  * center of the bottom face of the bounding box. If
- * FIT_TO_VIEW is not set, this is the location in world
+ * fitToView is not set, this is the location in world
  * coordinates that we want to model's origin to appear at. */
 float placeToPutModel[3] = { 0, 0, 0 };
 /** SketchUp produces files that older versions of ASSIMP think 1 unit
@@ -50,12 +54,6 @@ float placeToPutModel[3] = { 0, 0, 0 };
  * meters. Newer versions of ASSIMP correctly read the same files and
  * give us units in meters. */
 #define INCHES_TO_METERS 0
-
-/** The following variable toggles the display an "origin+axis" marker
- * which draws a small box at the origin and draws lines of length 1
- * on each axis. Depending on which matrices are applied to the
- * marker, the marker will be in object, world, etc coordinates. */
-#define SHOW_ORIGIN 0
 
 #define GLSL_VERT_FILE "assimp.vert"
 #define GLSL_FRAG_FILE "assimp.frag"
@@ -218,7 +216,7 @@ void keyboard(unsigned char key, int x, int y)
 void get_model_matrix(float result[16])
 {
 	mat4f_identity(result);
-	if(FIT_TO_VIEW == 0)
+	if(fitToView == 0)
 	{
 		/* Translate the model to where we were asked to put it */
 		float translate[16];
@@ -358,15 +356,11 @@ void display()
 		                   modelview); // value
 
 		glUniform1i(kuhl_get_uniform("renderStyle"), renderStyle);
-		// Copy far plane value into vertex program so we can render depth buffer.
-		float f[6]; // left, right, bottom, top, near>0, far>0
-		projmat_get_frustum(f, viewport[2], viewport[3]);
-		glUniform1f(kuhl_get_uniform("farPlane"), f[5]);
 
 		kuhl_errorcheck();
 		kuhl_geometry_draw(modelgeom); /* Draw the model */
 		kuhl_errorcheck();
-		if(SHOW_ORIGIN)
+		if(showOrigin)
 		{
 			/* Save current line width */
 			GLfloat origLineWidth;
@@ -489,38 +483,55 @@ int main(int argc, char** argv)
 {
 	char *modelFilename    = NULL;
 	char *modelTexturePath = NULL;
-	
-	if(argc == 2)
+
+	int currentArgIndex = 1; // skip program name
+	int usageError = 0;
+	while(argc > currentArgIndex)
 	{
-		modelFilename = argv[1];
-		modelTexturePath = NULL;
+		if(strcmp(argv[currentArgIndex], "--fit") == 0)
+			fitToView = 1;
+		else if(strcmp(argv[currentArgIndex], "--origin") == 0)
+			showOrigin = 1;
+		else if(modelFilename == NULL)
+		{
+			modelFilename = argv[currentArgIndex];
+			modelTexturePath = NULL;
+		}
+		else if(modelTexturePath == NULL)
+			modelTexturePath = argv[currentArgIndex];
+		else
+		{
+			usageError = 1;
+		}
+		currentArgIndex++;
 	}
-	else if(argc == 3)
-	{
-		modelFilename = argv[1];
-		modelTexturePath = argv[2];
-	}
-	else
+
+	// If we have no model to load or if there were too many arguments.
+	if(modelFilename == NULL || usageError)
 	{
 		printf("Usage:\n"
-		       "%s modelFile     - Textures are assumed to be in the same directory as the model.\n"
+		       "%s [--fit] [--origin] modelFile     - Textures are assumed to be in the same directory as the model.\n"
 		       "- or -\n"
-		       "%s modelFile texturePath\n", argv[0], argv[0]);
-		exit(1);
+		       "%s [--fit] [--origin] modelFile texturePath\n"
+		       "If the optional --fit parameter is included, the model will be scaled and translated to fit within the approximate view of the camera\n"
+		       "If the optional --origin parameter is included, a box will is drawn at the origin and unit-length lines are drawn down each axis.\n",
+		       argv[0], argv[0]);
+		exit(EXIT_FAILURE);
 	}
 
 	/* set up our GLUT window */
 	glutInit(&argc, argv);
 	glutInitWindowSize(512, 512);
-	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
+
 	/* Ask GLUT to for a double buffered, full color window that
 	 * includes a depth buffer */
-#ifdef __APPLE__
-	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
-#else
+#ifdef FREEGLUT
+	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 	glutInitContextVersion(3,2);
 	glutInitContextProfile(GLUT_CORE_PROFILE);
+#else
+	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 #endif
 	glutCreateWindow(argv[0]); // set window title to executable name
 	glEnable(GL_MULTISAMPLE);
@@ -563,7 +574,7 @@ int main(int argc, char** argv)
 
 	// Load the model from the file
 	modelgeom = kuhl_load_model(modelFilename, modelTexturePath, program, bbox);
-	if(SHOW_ORIGIN)
+	if(showOrigin)
 		origingeom = kuhl_load_model("../models/origin/origin.obj", NULL, program, NULL);
 	
 	init_geometryQuad(&labelQuad, program);

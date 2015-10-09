@@ -1,3 +1,9 @@
+if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    message(FATAL_ERROR "Don't run cmake here. Run it in the root folder of this repository.")
+endif()
+cmake_minimum_required(VERSION 2.6)
+
+
 ####################################
 # Edit the following areas to add or remove programs to compile
 #
@@ -10,6 +16,8 @@ set(NEED_ASSIMP viewer slerp explode flock ik)
 set(NEED_NOTHING text triangle triangle-color triangle-shade prerend picker teartest texture panorama ogl2-triangle ogl2-slideshow ogl2-texture pong)
 
 
+
+
 # Construct a list of programs that we want to compile based on which libraries are available.
 set(PROGRAMS_TO_MAKE ${NEED_NOTHING})
 if(ASSIMP_FOUND)
@@ -20,13 +28,13 @@ endif()
 
 
 # Make a target that lets us copy all of the vert and frag files from this directory into the bin directory.
-file(GLOB ShaderFiles "*.vert" "*.frag")
-add_custom_target(copyGLSL)
-foreach(ShaderFile ${ShaderFiles})
-    add_custom_command(TARGET copyGLSL PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E
-        copy ${ShaderFile} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-endforeach()
+# file(GLOB ShaderFiles "*.vert" "*.frag")
+# add_custom_target(copyGLSL)
+# foreach(ShaderFile ${ShaderFiles})
+#     add_custom_command(TARGET copyGLSL PRE_BUILD
+#         COMMAND ${CMAKE_COMMAND} -E
+#         copy ${ShaderFile} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+# endforeach()
 
 
 # Compile the list of programs.
@@ -56,13 +64,16 @@ foreach(arg ${PROGRAMS_TO_MAKE})
 	endif()
 
 	target_link_libraries(${arg} ${GLEW_LIBRARIES} ${M_LIB} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
+	if(APPLE)
+		# Some Mac OSX machines need this to ensure that freeglut.h is found.
+		target_include_directories(${arg} PUBLIC "/opt/X11/include/freetype2/")
+	endif()
 
 	set_target_properties(${arg} PROPERTIES LINKER_LANGUAGE "CXX")
 	set_target_properties(${arg} PROPERTIES COMPILE_DEFINITIONS "${PREPROC_DEFINE}")
-	add_dependencies(${arg} kuhl)
 
 	# Any time we make this program, copy all of the vertex and fragment program files into bin.
-	add_dependencies(${arg} copyGLSL)
+	# add_dependencies(${arg} copyGLSL)
 	if(OVR_FOUND)
 	    add_dependencies(${arg} copyOVR)
 	endif()

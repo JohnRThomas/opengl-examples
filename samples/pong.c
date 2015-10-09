@@ -5,12 +5,13 @@
 #include <stdbool.h>
 #include <time.h>
 #include <GL/glew.h>
-#include <GL/gl.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
+
+#ifdef FREEGLUT
 #include <GL/freeglut.h>
+#else
+#include <GLUT/glut.h>
 #endif
+
 #include "kuhl-util.h"
 #include "vecmat.h"
 #include "dgr.h"
@@ -18,6 +19,11 @@
 #include "viewmat.h"
 #include "vrpn-help.h"
 
+// Set this to 1 if you want to use the tracking system to control the
+// paddles. Set it to 0 to use the keyboard to control the paddles.
+#define USE_VRPN 0
+
+// Names of the tracked objects which will form the paddles.
 #define TRACKED_OBJ_A "HandL"
 #define TRACKED_OBJ_B "HandR"
 #define STARS "../images/stars.png"
@@ -35,6 +41,7 @@
 #define STARS "pong/stars.png"
 #define EARTH "pong/earth.png"
 #define CLOUDS "pong/clouds.png"
+
 
 #define GS_WAITING 0
 #define GS_READY 1
@@ -149,14 +156,18 @@ void game()
 {
 	float frustum[6];
 	projmat_get_frustum(frustum, -1, -1);
+<<<<<<< HEAD
 	
 	//Grab the tracking data from VRPN
 	vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
 	paddleA.xpos = vrpnPos[0];
 
+=======
+>>>>>>> upstream/master
 
-	if(vrpnPos[1] <= .5)
+	if(USE_VRPN)
 	{
+<<<<<<< HEAD
 		paddleA.ready = true;
 	}
 
@@ -166,6 +177,17 @@ void game()
 	if(vrpnPos[1] <= .5)
 	{
 		paddleB.ready = true;
+=======
+		vrpn_get(TRACKED_OBJ_A, NULL, vrpnPos, vrpnOrient);
+		paddleA.xpos = vrpnPos[0];
+		if(vrpnPos[1] <= .5)
+			paddleA.ready = true;
+		
+		vrpn_get(TRACKED_OBJ_B, NULL, vrpnPos, vrpnOrient);
+		paddleB.xpos = vrpnPos[0];
+		if(vrpnPos[1] <= .5)
+			paddleB.ready = true;
+>>>>>>> upstream/master
 	}
 	
 	//Preform the action based on the game state
@@ -529,17 +551,20 @@ void drawPaddle(Paddle paddle, float depth)
 
 int main( int argc, char* argv[] )
 {	
-	/* Initialize glut */
-	glutInit(&argc, argv); //initialize the toolkit
-	glEnable(GL_POINT_SMOOTH);
+	glutInit(&argc, argv);
+	glutInitWindowSize(768, 512);
+	glutInitWindowPosition(0, 0);
+#ifdef FREEGLUT
 	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
-	
-	/* Ask GLUT to for a double buffered, full color window that includes a depth buffer */
-	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);  //set display mode
-	glutInitWindowSize(768, 512); //set window size
-	glutInitWindowPosition(0, 0); //set window position on screen
-	glutCreateWindow(argv[0]); //open the screen window
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
+//	glutInitContextVersion(3,2);
+//	glutInitContextProfile(GLUT_CORE_PROFILE);
+#else
+	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
+#endif
+	glutCreateWindow(argv[0]);
 	glEnable(GL_MULTISAMPLE);
+	glEnable(GL_POINT_SMOOTH);
 	
 	/* Initialize glew */
 	int glew_err = glewInit();

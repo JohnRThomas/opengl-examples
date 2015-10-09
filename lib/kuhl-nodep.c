@@ -105,7 +105,11 @@ void *kuhl_mallocFileLine(size_t size, const char *file, int line)
 
 
 
-/** Checks if a file is readable or not.
+/** Checks if a file is readable or not by attempting to fopen() the
+    file for reading. IMPORTANT: Calling fopen() on a directory is
+    undefined---but on Linux fopen() typically behaves as if it were
+    successful. Therefore, on Linux, this function will also find
+    directories.
 
  @param filename The file to check
  @return Returns 1 if we can read the file, 0 otherwise.
@@ -122,7 +126,68 @@ int kuhl_can_read_file(const char *filename)
 	}
 }
 
+/** Replaces all instances of '\' in a string with '/'. This function
+    is useful if you have a relative file path created on a Windows
+    machine---and you want to try to open that file on Linux.
 
+    @param input The string to change '\' to '/'
+    
+    @return A newly allocated string containing a copy of input with
+    '\' changed to '/'. The returned string should be free()'d by the
+    caller.
+*/
+static char* kuhl_fix_path(const char* input)
+{
+	if(input == NULL)
+		return NULL;
+	
+	char *output = strdup(input);
+	if(output == NULL) // insufficient memory
+	{
+		perror("strdup");
+		exit(EXIT_FAILURE);
+	}
+	char *tmp = output;
+
+	while(*tmp != '\0')
+	{
+		if(*tmp == '\\')
+			*tmp = '/';
+		tmp++;
+	}
+	return output;
+}
+
+/** Creates a path out of strings a and b (with a '/' inserted between
+ * them). Then, checks to see if the path is readable with
+ * kuhl_can_read_file().
+
+    @param a The first part of the path.
+    @param b The second part of the path.
+    @return The new path (if it is readable) or NULL.
+*/
+static char* kuhl_path_concat_read(const char* a, const char* b)
+{
+	if(a == NULL || b == NULL)
+		return NULL;
+
+	int combinedLen = strlen(a)+strlen(b)+32; // ensure plenty of space
+	char *combined = kuhl_malloc(sizeof(char)*combinedLen);
+	int ret = snprintf(combined, combinedLen, "%s/%s", a, b);
+	if(ret < 0 || ret >= combinedLen)
+	{
+		fprintf(stderr, "snprintf() error");
+		exit(EXIT_FAILURE);
+	}
+
+	if(kuhl_can_read_file(combined))
+		return combined;
+	else
+	{
+		free(combined);
+		return NULL;
+	}
+}
 
 /* Given a filename, tries to find that file by:
    1) Looking for the file using the given path.
@@ -131,8 +196,10 @@ int kuhl_can_read_file(const char *filename)
    Windows-style path separators.
 
    3) Search for file relative to directory of executable (on Linux)
+   (also, try changing the path separators.)
 
-   4) Combine possibilities 2 and 3 (on Linux)
+   4) Search for file using a list of hard-coded directories (also,
+   try changing the path separators).
 
    @param filename The name of the file the caller wants to open.
    @return A path to the file that may be different than the path
@@ -144,21 +211,19 @@ char* kuhl_find_file(const char *filename)
 {
 	if(kuhl_can_read_file(filename))
 		return strdup(filename);
-	
-	/* Try changing path separators from Windows style '\' to Linux
-	 * style '/'. */
-	char *pathSepChange = strdup(filename);
-	char *tmp = pathSepChange;
-	while(*tmp != '\0')
-	{
-		if(*tmp == '\\')
-			*tmp = '/';
-		tmp++;
-	}
+
+	char *pathSepChange = kuhl_fix_path(filename);
 	if(kuhl_can_read_file(pathSepChange))
 		return pathSepChange;
 
-#ifdef __linux
+	char commonDirs[32][256];
+	int commonDirsLen = 0;
+	strncpy(commonDirs[commonDirsLen++], "../samples", 255); // Find fragment programs in samples directory
+	strncpy(commonDirs[commonDirsLen++], "/home/kuhl/public-ogl/data", 255); // CCSR
+	strncpy(commonDirs[commonDirsLen++], "/home/campus11/kuhl/public-ogl/data", 255); // Rekhi
+	strncpy(commonDirs[commonDirsLen++], "/research/kuhl/public-ogl/data", 255); // IVS
+
+#ifdef __linux__
 	/* If we can't open the filename directly, then try opening it
 	   with the full path based on the path to the
 	   executable. This allows us to more easily run programs from
@@ -169,45 +234,40 @@ char* kuhl_find_file(const char *filename)
 	ssize_t len = readlink("/proc/self/exe", exe, 1023);
 	exe[len]='\0';
 	char *dir = dirname(exe);
-	char *newPathFile = malloc(sizeof(char)*1024);
-	snprintf(newPathFile, 1024, "%s/%s", dir, filename);
-	if(kuhl_can_read_file(newPathFile))
-	{
-		free(pathSepChange);
-		return newPathFile;
-	}
-	/* Try using executable directory along with the path that has
-	 * corrected file path separators */
-	snprintf(newPathFile, 1024, "%s/%s", dir, pathSepChange);
-	if(kuhl_can_read_file(newPathFile))
-	{
-		free(pathSepChange);
-		return newPathFile;
-	}
+
+	/* For every relative path in commonDirs, add an additional
+	 * directory which has the path to the executable prepended to
+	 * it. */
+	int origLen = commonDirsLen;
+	strncpy(commonDirs[commonDirsLen++], dir, 255); // Rekhi
+	for(int i=0; i<origLen; i++)
+		if(commonDirs[i][0] != '/')
+			snprintf(commonDirs[commonDirsLen++], 256, "%s/%s", dir, commonDirs[i]);
 #endif
 
-	/* Search for file in common paths. */
-	char *commonDirs[] = { "/home/kuhl/public-ogl/data",  // CCSR
-	                       "/home/campus11/kuhl/public-ogl/data", // Rekhi
-	                       "/research/kuhl/public-ogl/data" }; // IVS
-	for(int i=0; i<3; i++)
+	/*
+	printf("File search paths besides the current directory:\n");
+	for(int i=0; i<commonDirsLen; i++)
+		printf("%s\n", commonDirs[i]);
+	*/
+		
+	
+	char *newPath = NULL;
+	for(int i=0; i<commonDirsLen; i++)
 	{
-		char *newPathFile = malloc(sizeof(char)*1024);
-		snprintf(newPathFile, 1024, "%s/%s", commonDirs[i], filename);
-		if(kuhl_can_read_file(newPathFile))
+		newPath = kuhl_path_concat_read(commonDirs[i], filename);
+		if(newPath)
 		{
 			free(pathSepChange);
-			return newPathFile;
+			return newPath;
 		}
 		/* Try converting path separators too */
-		snprintf(newPathFile, 1024, "%s/%s", commonDirs[i], pathSepChange);
-		if(kuhl_can_read_file(newPathFile))
+		newPath = kuhl_path_concat_read(commonDirs[i], pathSepChange);
+		if(newPath)
 		{
 			free(pathSepChange);
-			return newPathFile;
+			return newPath;
 		}
-
-		free(newPathFile);
 	}
 	
 	free(pathSepChange);
@@ -442,7 +502,7 @@ int kuhl_randomInt(int min, int max)
 void kuhl_shuffle(void *array, int n, int size)
 {
 	char *arr = (char*) array; // Use a char array which we know uses 1 byte pointer arithmetic
-	char *tmp = malloc(size); // avoid use of VLA
+	char *tmp = kuhl_malloc(size); // avoid use of VLA
 
 	// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 	for(int i=n-1; i>=1; i--)

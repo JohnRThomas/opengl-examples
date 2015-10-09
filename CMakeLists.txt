@@ -119,17 +119,17 @@ endif()
 find_package(OpenGL REQUIRED)
 include_directories(${OPENGL_INCLUDE_DIRS})
 
-# --- Freeglut (version 2.6 or higher) ---
+# --- Freeglut (need version 2.6(?) or higher) ---
 find_package(GLUT REQUIRED)
 include_directories(${GLUT_INCLUDE_DIR})
 
-# Make sure freeglut installation is new enough!
+# Since we also try to work with traditional GLUT, detect which one we are using by looking for the FREEGLUT symbol inside of the header file.
 include(CheckSymbolExists)
-if(UNIX AND NOT APPLE)
-	CHECK_SYMBOL_EXISTS(GLUT_CORE_PROFILE "${GLUT_INCLUDE_DIR}/GL/freeglut.h;${GLUT_INCLUDE_DIR}/GL/freeglut_ext.h" FREEGLUT_NEW_ENOUGH)
-	if(NOT FREEGLUT_NEW_ENOUGH)
-		message(FATAL_ERROR "freeglut version 2.6 or higher is required.")
-	endif()
+	CHECK_SYMBOL_EXISTS(FREEGLUT "${GLUT_INCLUDE_DIR}/GL/freeglut.h;${GLUT_INCLUDE_DIR}/GL/glut.h" USING_FREEGLUT)
+	if(USING_FREEGLUT)
+		set(FREEGLUT_FOUND_DEFINITION "FREEGLUT")
+	else()
+		set(FREEGLUT_FOUND_DEFINITION "")
 endif()
 
 # --- GLEW ---
@@ -198,9 +198,10 @@ find_package(Threads)
 find_package(OVR)
 if(OVR_FOUND)
 	# LibOVR relies on a LibOVRRT library at run time. It must be in /usr/lib or /usr/local/lib or in the same directory as the binary.
-	# Here, we make "cmake ." result in the so files getting copied into the bin folder.
+	# Here, we make "cmake ." copy the .so files into the bin folder.
 	add_custom_target(copyOVR)
-	get_filename_component(ovrSoDir ${OVR_LIBRARY_SO} DIRECTORY)
+	# TODO: The PATH variable below should be renamed to DIRECTORY once all computers use versions newer than cmake 2.8.11 (Rekhi lab uses 2.8.11)
+	get_filename_component(ovrSoDir ${OVR_LIBRARY_SO} PATH)
 	file(GLOB SO_FILES "${ovrSoDir}/*.so" "${ovrSoDir}/*.so.*")
 	foreach(SOFILE ${SO_FILES})
 	    add_custom_command(TARGET copyOVR PRE_BUILD
@@ -215,7 +216,7 @@ else()
 endif()
 
 # Set the preprocessor flags.
-set(PREPROC_DEFINE "MOUSEMOVE_GLUT;${FREETYPE_FOUND_DEFINITION};${ASSIMP_FOUND_DEFINITION};${MISSING_VRPN_DEFINITION};${MISSING_OVR_DEFINITION};${IMAGEMAGICK_FOUND_DEFINITION}")
+set(PREPROC_DEFINE "MOUSEMOVE_GLUT;${FREETYPE_FOUND_DEFINITION};${ASSIMP_FOUND_DEFINITION};${MISSING_VRPN_DEFINITION};${MISSING_OVR_DEFINITION};${IMAGEMAGICK_FOUND_DEFINITION};${FREEGLUT_FOUND_DEFINITION}")
 
 
 # Look in lib folder for libraries and header files

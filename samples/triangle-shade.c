@@ -12,10 +12,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <GL/glew.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
+#ifdef FREEGLUT
 #include <GL/freeglut.h>
+#else
+#include <GLUT/glut.h>
 #endif
 
 #include "kuhl-util.h"
@@ -60,7 +60,7 @@ void display()
 	/* Render the scene once for each viewport. Frequently one
 	 * viewport will fill the entire screen. However, this loop will
 	 * run twice for HMDs (once for the left eye and once for the
-	 * right. */
+	 * right). */
 	viewmat_begin_frame();
 	for(int viewportID=0; viewportID<viewmat_num_viewports(); viewportID++)
 	{
@@ -69,11 +69,12 @@ void display()
 		/* Where is the viewport that we are drawing onto and what is its size? */
 		int viewport[4]; // x,y of lower left corner, width, height
 		viewmat_get_viewport(viewport, viewportID);
+		/* Tell OpenGL the area of the window that we will be drawing in. */
 		glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
 		/* Clear the current viewport. Without glScissor(), glClear()
 		 * clears the entire screen. We could call glClear() before
-		 * this viewport loop---but on order for all variations of
+		 * this viewport loop---but in order for all variations of
 		 * this code to work (Oculus support, etc), we can only draw
 		 * after viewmat_begin_eye(). */
 		glScissor(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -84,7 +85,7 @@ void display()
 		glEnable(GL_DEPTH_TEST); // turn on depth testing
 		kuhl_errorcheck();
 
-		/* Get the view or camera matrix; update the frustum values if needed. */
+		/* Get the view matrix and the projection matrix */
 		float viewMat[16], perspective[16];
 		viewmat_get(viewMat, perspective, viewportID);
 
@@ -95,22 +96,31 @@ void display()
 		float angle = count / 10000.0 * 360; // rotate 360 degrees every 10 seconds
 		/* Make sure all computers/processes use the same angle */
 		dgr_setget("angle", &angle, sizeof(GLfloat));
+
 		/* Create a 4x4 rotation matrix based on the angle we computed. */
 		float rotateMat[16];
 		mat4f_rotateAxis_new(rotateMat, angle, 0,1,0);
 
 		/* Create a scale matrix. */
-		float scaleMatrix[16];
-		mat4f_scale_new(scaleMatrix, 3, 3, 3);
+		float scaleMat[16];
+		mat4f_scale_new(scaleMat, 3, 3, 3);
 
-		// Modelview = (viewMatrix * scaleMatrix) * rotationMatrix
+		/* Combine the scale and rotation matrices into a single model matrix.
+		   modelMat = scaleMat * rotateMat
+		*/
+		float modelMat[16];
+		mat4f_mult_mat4f_new(modelMat, scaleMat, rotateMat);
+
+		/* Construct a modelview matrix: modelview = viewMat * modelMat */
 		float modelview[16];
-		mat4f_mult_mat4f_new(modelview, viewMat, scaleMatrix);
-		mat4f_mult_mat4f_new(modelview, modelview, rotateMat);
+		mat4f_mult_mat4f_new(modelview, viewMat, modelMat);
 
+		/* Tell OpenGL which GLSL program the subsequent
+		 * glUniformMatrix4fv() calls are for. */
 		kuhl_errorcheck();
 		glUseProgram(program);
 		kuhl_errorcheck();
+		
 		/* Send the perspective projection matrix to the vertex program. */
 		glUniformMatrix4fv(kuhl_get_uniform("Projection"),
 		                   1, // number of 4x4 float matrices
@@ -121,13 +131,16 @@ void display()
 		                   1, // number of 4x4 float matrices
 		                   0, // transpose
 		                   modelview); // value
-		// Normal matrix = transpose(inverse(modelview))
+		
+		/* Generate an appropriate normal matrix based on the model view matrix:
+		  normalMat = transpose(inverse(modelview))
+		*/
 		float normalMat[9];
 		mat3f_from_mat4f(normalMat, modelview);
 		mat3f_invert(normalMat);
 		mat3f_transpose(normalMat);
 		glUniformMatrix3fv(kuhl_get_uniform("NormalMat"),
-		                   1, // count
+		                   1, // number of 3x3 float matrices
 		                   0, // transpose
 		                   normalMat); // value
 
@@ -158,7 +171,9 @@ void init_geometryTriangle(kuhl_geometry *geom, GLuint prog)
 	kuhl_geometry_new(geom, prog, 3, // num vertices
 	                  GL_TRIANGLES); // primitive type
 
-	/* The data that we want to draw */
+	/* Vertices that we want to form triangles out of. Every 3 numbers
+	 * is a vertex position. Since no indices are provided, every
+	 * three vertex positions form a single triangle.*/
 	GLfloat vertexPositions[] = {0, 0, 0,
 	                             1, 0, 0,
 	                             1, 1, 0};
@@ -182,7 +197,9 @@ void init_geometryQuad(kuhl_geometry *geom, GLuint prog)
 	                  4, // number of vertices
 	                  GL_TRIANGLES); // type of thing to draw
 
-	/* The data that we want to draw */
+	/* Vertices that we want to form triangles out of. Every 3 numbers
+	 * is a vertex position. Below, we provide indices to form
+	 * triangles out of these vertices. */
 	GLfloat vertexPositions[] = {0+1.1, 0, 0,
 	                             1+1.1, 0, 0,
 	                             1+1.1, 1, 0,
@@ -199,8 +216,11 @@ void init_geometryQuad(kuhl_geometry *geom, GLuint prog)
 	                        0, 0, 1};
 	kuhl_geometry_attrib(geom, normalData, 3, "in_Normal", KG_WARN);
 	
-	GLuint indexData[] = { 0, 1, 2,  // first triangle is index 0, 1, and 2 in the list of vertices
-	                       0, 2, 3 }; // indices of second triangle.
+	/* A list of triangles that we want to draw. "0" refers to the
+	 * first vertex in our list of vertices. Every three numbers forms
+	 * a single triangle. */
+	GLuint indexData[] = { 0, 1, 2,  
+	                       0, 2, 3 };
 	kuhl_geometry_indices(geom, indexData, 6);
 
 	kuhl_errorcheck();
@@ -213,12 +233,13 @@ int main(int argc, char** argv)
 	glutInitWindowSize(512, 512);
 	/* Ask GLUT to for a double buffered, full color window that
 	 * includes a depth buffer */
-#ifdef __APPLE__
-	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
-#else
+#ifdef FREEGLUT
+	glutSetOption(GLUT_MULTISAMPLE, 4); // set msaa samples; default to 4
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 	glutInitContextVersion(3,2);
 	glutInitContextProfile(GLUT_CORE_PROFILE);
+#else
+	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
 #endif
 	glutCreateWindow(argv[0]); // set window title to executable name
 	glEnable(GL_MULTISAMPLE);
@@ -246,6 +267,9 @@ int main(int argc, char** argv)
 	/* Compile and link a GLSL program composed of a vertex shader and
 	 * a fragment shader. */
 	program = kuhl_create_program("triangle-shade.vert", "triangle-shade.frag");
+
+	/* Use the GLSL program so subsequent calls to glUniform*() send the variable to
+	   the correct program. */
 	glUseProgram(program);
 	kuhl_errorcheck();
 	/* Set the uniform variable in the shader that is named "red" to the value 1. */

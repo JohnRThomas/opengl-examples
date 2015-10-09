@@ -12,12 +12,19 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+
+#ifdef __linux__
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
+
 #include <GL/glew.h>
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
+#ifdef FREEGLUT
 #include <GL/freeglut.h>
+#else
+#include <GLUT/glut.h>
 #endif
 
 #include "kuhl-util.h"
@@ -43,8 +50,8 @@ GLuint numTiles=0;
 GLuint texNames[MAX_TILES];
 float aspectRatio;
 
-int alreadyDisplayedTexture = 1; // display() needs to reload currentTexture.
-int currentTexture = 1; // first texture is 1 (corresponds to argv[1]
+int alreadyDisplayedTexture = 0; // Used to determine if we need to reload currentTexture.
+int currentTexture = 0; // The texture to be displayed.
 int totalTextures = 0;
 char **globalargv = NULL;
 
@@ -77,8 +84,8 @@ float readfile(char *filename, GLuint *texName, GLuint *numTiles)
 	int height = -1;
 	int comp = -1;
 	int requestedComponents = STBI_rgb_alpha;
+	stbi_set_flip_vertically_on_load(1);
 	unsigned char *image = (unsigned char*) stbi_load(filename, &width, &height, &comp, requestedComponents);
-	kuhl_flip_texture_rgba_array(image,width,height,requestedComponents);
 #endif
 
 	if(image == NULL)
@@ -187,20 +194,18 @@ float readfile(char *filename, GLuint *texName, GLuint *numTiles)
 int getNextTexture()
 {
 	int next = currentTexture+1;
-	if(next > totalTextures)
-		return 1;
+	if(next >= totalTextures)
+		return 0;
 	return next;
 }
 
 int getPrevTexture()
 {
 	int next = currentTexture-1;
-	if(next < 1)
-		return totalTextures;
+	if(next < 0)
+		return totalTextures-1;
 	return next;
 }
-
-void display(void);
 
 /* Deletes any tiles that are already loaded and then loads up the
  * current texture image. */
@@ -216,11 +221,23 @@ void loadTexture(int textureIndex)
 
 void display(void)
 {
-	kuhl_limitfps(100);
-	dgr_update();
-	// Make sure slaves get updates ASAP
-	dgr_setget("currentTex", &currentTexture, sizeof(int));
+	// If master, send the latest data out.
+	if(dgr_is_enabled() && dgr_is_master())
+	{
+		dgr_setget("currentTex", &currentTexture, sizeof(int));
+		dgr_setget("scrollAmount", &scrollAmount, sizeof(float));
+		dgr_update();
+	}
 
+	kuhl_limitfps(100);
+
+	if(dgr_is_enabled() && !dgr_is_master())
+	{
+		dgr_update();
+		dgr_setget("currentTex", &currentTexture, sizeof(int));
+		dgr_setget("scrollAmount", &scrollAmount, sizeof(float));
+	}
+	
 	/* If the texture has changed since we were previously in display() */
 	if(alreadyDisplayedTexture != currentTexture)
 	{
@@ -303,8 +320,6 @@ void display(void)
 		}
 	}
 
-	dgr_setget("scrollAmount", &scrollAmount, sizeof(float));
-
 	/* If autoadvance is set and we are not scrolling (or done
 	 * scrolling) figure out if it is now time to advance to the next
 	 * image. */
@@ -315,8 +330,6 @@ void display(void)
 		{
 			msg(INFO, "Automatically advancing to next image, please wait.\n");
 			currentTexture = getNextTexture();
-			dgr_setget("currentTexture", &currentTexture, sizeof(int));
-			dgr_update();
 		}
 	}
 
@@ -378,17 +391,13 @@ void display(void)
 
 void keyboard(unsigned char key, int x, int y)
 {
-	if(!dgr_is_master())
+	// Ignore keys if DGR is enabled and we are not master
+	if(dgr_is_enabled() && !dgr_is_master())
 		return;
 	
 	if (key == 'n' || key == ' ')
 	{
 		msg(INFO, "Advancing to next image, please wait.\n");
-		
-		// If we press spacebar, advance to next image even if scrolling
-		// didn't finish---so we will artificially add a lot of scroll so
-		// display() thinks scrolling is done.
-		scrollAmount = 1000;
 		
 		// if auto-advance, just force next picture by adjusting time the
 		// picture was first displayed!
@@ -404,10 +413,6 @@ void keyboard(unsigned char key, int x, int y)
 	if (key == 'b' || key == 'p' || key == 73) // back or previous - 73=pageup
 	{
 		msg(INFO, "Advancing to previous image...please wait...\n");
-		// If we press spacebar, advance to next image even if scrolling
-		// didn't finish---so we will artificially add a lot of scroll so
-		// display() thinks scrolling is done.
-		scrollAmount = 1000;
 
 		// if auto-advance, just force next picture by adjusting time the
 		// picture was first displayed!
@@ -421,7 +426,10 @@ void keyboard(unsigned char key, int x, int y)
 
 
 	if (key == 27 || key == 'q')  // escape key, exit program
-		exit(0);
+	{
+		dgr_exit();
+		exit(EXIT_SUCCESS);
+	}
 	if(key == 's')
 	{
 		if(autoAdvance == 1)
@@ -433,7 +441,6 @@ void keyboard(unsigned char key, int x, int y)
 		{
 			msg(INFO, "starting auto-advance.\n");
 			autoAdvance = 1;
-
 		}
 	}
 	glutPostRedisplay();
@@ -447,15 +454,87 @@ void special_keyboard(int key, int x, int y)
 		keyboard('p', 0,0);
 }
 
+int handle_directory(int argc, char** argv)
+{
+#ifdef __linux__
+	char *dirLoc = kuhl_find_file(argv[1]);
+	if(argc == 2 && dirLoc)
+	{
+		printf("Directory was passed as an argument.\n");
+
+		// Scan the directory for files.
+		struct dirent **dirList;
+		int count = scandir(dirLoc, &dirList, NULL, alphasort);
+		if(count == -1)
+		{   // probably not a directory...
+			printf("Maybe it wasn't a directory: %s\n", dirLoc);
+			free(dirLoc);
+			return 0;
+		}
+
+		// Create a list of files to use in place of argv. Note that
+		// we put a dummy value in the first spot which would normally
+		// correspond to the executable name.
+		char **filenamePtrs = malloc(sizeof(char*)*count);
+		totalTextures=0;
+		for(int i=0; i<count; i++) // for each file
+		{
+			// concatenate directory name and the filename
+			char dirPlusFile[1024];
+			snprintf(dirPlusFile, 1024, "%s/%s", argv[1], dirList[i]->d_name);
+			// Find the path to the file
+			char *filename = kuhl_find_file(dirPlusFile);
+
+			// Make sure it is a file.
+			struct stat fileStat;
+			if(stat(filename,&fileStat) < 0)
+			{
+				perror("stat");
+				exit(EXIT_FAILURE);
+			}
+
+			if(S_ISREG(fileStat.st_mode) &&
+			   (strcasecmp(filename+strlen(filename)-4, ".jpg") == 0 ||
+			    strcasecmp(filename+strlen(filename)-4, ".png") == 0 ||
+			    strcasecmp(filename+strlen(filename)-4, ".tif") == 0 ||
+				strcasecmp(filename+strlen(filename)-5, ".tiff") == 0))
+			{
+				printf("Found image filename: %s\n", filename);
+				*(filenamePtrs+totalTextures) = strdup(filename);
+				totalTextures++;
+			}
+			free(filename);
+		}
+		
+		// Free space
+		for(int i=0; i<count; i++)
+			free(dirList[i]);
+		free(dirList);
+		free(dirLoc);
+
+		globalargv = filenamePtrs;
+		// totalTextures is the actual number of textures, not counting the dummy entry in the first spot.
+		totalTextures++;
+		return 1;
+	}
+#endif
+	return 0;
+}
+
 int main(int argc, char** argv)
 {
-	totalTextures = argc-1;
-	if(totalTextures == 0)
+	if(handle_directory(argc, argv) == 0)
 	{
-		msg(FATAL, "Provide textures to use.\n");
-		exit(EXIT_FAILURE);
+		// If we were passed one or more filenames, not directories
+		totalTextures = argc-1;
+		if(totalTextures == 0)
+		{
+			msg(FATAL, "Provide textures to use.\n");
+			exit(EXIT_FAILURE);
+		}
+		globalargv = &(argv[1]);
 	}
-	globalargv = argv;
+
 
 	/* set up our GLUT window */
 	glutInit(&argc, argv);
@@ -485,7 +564,7 @@ int main(int argc, char** argv)
 	dgr_init();
 	projmat_init();
 
-	loadTexture(1);
+	loadTexture(currentTexture);
 
 	/* Tell GLUT to start running the main loop and to call display(),
 	 * keyboard(), etc callback methods as needed. */
